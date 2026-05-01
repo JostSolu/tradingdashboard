@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/tabs";
 import {
   BarChart3,
+  BookOpenCheck,
   ClipboardList,
   Database,
   ExternalLink,
@@ -35,6 +36,7 @@ import {
   LogOut,
   Save,
   Trash2,
+  Trophy,
 } from "lucide-react";
 import {
   Area,
@@ -120,6 +122,7 @@ type Trade = {
   risk: number | null;
   rr_plan: string | null;
   timeframes: string | null;
+  strategy: string | null;
   setup_tags: string[] | null;
   result: string | null;
   rules_followed: string | null;
@@ -330,6 +333,19 @@ function ChartCard({
   );
 }
 
+function RuleList({ items }: { items: string[] }) {
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div key={item} className="flex gap-2 text-sm text-slate-700">
+          <div className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+          <div>{item}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AuthBox() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -416,6 +432,7 @@ export default function Home() {
       risk: parsed.R ? Number(parsed.R.replace(",", ".")) : null,
       rr_plan: parsed.RP || null,
       timeframes: parsed.TF || null,
+      strategy: (parsed.STRAT || "").toUpperCase() || null,
       setup_tags: getSetupTags(parsed.SETUP),
       result: (parsed.RES || "").toUpperCase(),
       rules_followed: normalizeRules(parsed.RULES),
@@ -984,6 +1001,14 @@ export default function Home() {
                   <BarChart3 className="h-4 w-4" />
                   Backtest Dashboard
                 </TabsTrigger>
+
+                <TabsTrigger
+                  value="rules"
+                  className={navTriggerClass}
+                >
+                  <BookOpenCheck className="h-4 w-4" />
+                  Rules & Ziele
+                </TabsTrigger>
               </TabsList>
             </div>
           </div>
@@ -1023,12 +1048,13 @@ export default function Home() {
             </div>
 
             <div className="mx-auto mt-4 w-full max-w-7xl md:hidden">
-              <TabsList className="grid h-auto w-full grid-cols-5 rounded-xl bg-slate-100 p-1">
+              <TabsList className="grid h-auto w-full grid-cols-6 rounded-xl bg-slate-100 p-1">
                 <TabsTrigger value="input">Input</TabsTrigger>
                 <TabsTrigger value="dashboard">Stats</TabsTrigger>
                 <TabsTrigger value="trades">Trades</TabsTrigger>
                 <TabsTrigger value="backtesting">Test</TabsTrigger>
                 <TabsTrigger value="backtesting-dashboard">BT Stats</TabsTrigger>
+                <TabsTrigger value="rules">Rules</TabsTrigger>
               </TabsList>
             </div>
           </header>
@@ -1147,6 +1173,10 @@ export default function Home() {
                         <div className={panelClass}>
                           <div className="text-muted-foreground">Session</div>
                           <div className="font-medium">{preview.session_name}</div>
+                        </div>
+                        <div className={panelClass}>
+                          <div className="text-muted-foreground">Strategie</div>
+                          <div className="font-medium">{preview.strategy || "-"}</div>
                         </div>
                         <div className={panelClass}>
                           <div className="text-muted-foreground">Result</div>
@@ -1457,6 +1487,9 @@ export default function Home() {
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge>{trade.result}</Badge>
                           <Badge variant="secondary">{trade.pair}</Badge>
+                          {trade.strategy && (
+                            <Badge variant="secondary">{trade.strategy}</Badge>
+                          )}
                           <Badge variant="outline">{trade.side}</Badge>
                           <Badge variant="outline">{trade.session_name}</Badge>
                           <span className="text-sm text-muted-foreground">
@@ -1508,6 +1541,146 @@ export default function Home() {
                 </Card>
               ))
             )}
+          </TabsContent>
+
+          <TabsContent value="rules" className="space-y-6">
+            <div className="grid gap-4 md:grid-cols-4">
+              <StatCard title="Challenge" value="10k FTMO" detail="Phase 1 + Phase 2" />
+              <StatCard title="Aktueller Drawdown" value="2%" detail="Risk reduziert aktiv" />
+              <StatCard title="Ziel pro Phase" value="+10%" detail="2x Profit Target" />
+              <StatCard title="Aktueller Risk/Trade" value="0.25%" detail="ab 2% Drawdown" />
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <Card className={cardClass}>
+                <CardHeader className="px-5">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                    <Trophy className="h-5 w-5 text-cyan-500" />
+                    FTMO Ziele
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 px-5 pb-5">
+                  <div className={panelClass}>
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-700">Phase 1</span>
+                      <span className="text-slate-500">0% / 10%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-200">
+                      <div className="h-2 w-0 rounded-full bg-cyan-500" />
+                    </div>
+                  </div>
+
+                  <div className={panelClass}>
+                    <div className="mb-2 flex items-center justify-between text-sm">
+                      <span className="font-medium text-slate-700">Phase 2</span>
+                      <span className="text-slate-500">0% / 10%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-200">
+                      <div className="h-2 w-0 rounded-full bg-cyan-500" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="text-sm font-semibold text-amber-900">
+                      Aktuelle Lage
+                    </div>
+                    <div className="mt-1 text-sm text-amber-800">
+                      Du bist 2% im Drawdown. Nach deinem Plan gilt jetzt maximal
+                      0.25% Risiko pro Trade.
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className={cardClass}>
+                <CardHeader className="px-5">
+                  <CardTitle className="text-base font-semibold">
+                    Risiko-Regeln
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 px-5 pb-5 md:grid-cols-2">
+                  <div className={panelClass}>
+                    <div className="mb-3 text-sm font-semibold text-slate-900">
+                      Normal-Modus
+                    </div>
+                    <RuleList
+                      items={[
+                        "Max. Risk pro Trade: 0.5% bis 1%",
+                        "Max. Risk pro Tag: 2%",
+                        "Max. Loss Trades pro Tag: 2",
+                      ]}
+                    />
+                  </div>
+
+                  <div className={panelClass}>
+                    <div className="mb-3 text-sm font-semibold text-slate-900">
+                      Drawdown-Modus
+                    </div>
+                    <RuleList
+                      items={[
+                        "Ab 2% Drawdown: 0.25% Risk pro Trade",
+                        "Ab 4% Drawdown: nur 1:2 RR",
+                        "Ab 4% Drawdown: 0.1% Risk pro Trade",
+                      ]}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
+              <Card className={cardClass}>
+                <CardHeader className="px-5">
+                  <CardTitle className="text-base font-semibold">
+                    THP Trendfollow Entry
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 px-5 pb-5">
+                  <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-900">
+                    Aktive Strategien: BOS und THP. THP ist für Trendfollow
+                    Einstiege.
+                  </div>
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+                    Korrektur: nur bis zu GP, nicht bis DZ.
+                  </div>
+                  <RuleList
+                    items={[
+                      "M5 Entry: CHoCH im M15, BOS im M5",
+                      "M15 Entry: CHoCH im M15",
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card className={cardClass}>
+                <CardHeader className="px-5">
+                  <CardTitle className="text-base font-semibold">
+                    BOS Setup
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 px-5 pb-5">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm font-medium text-orange-900">
+                      Strong / Weak: Orange
+                    </div>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-900">
+                      Strong / Weak: Blau
+                    </div>
+                  </div>
+                  <RuleList
+                    items={[
+                      "Bestätigung: Immer CHoCH15",
+                      "Grab in Trendrichtung",
+                      "Orderblock beachten",
+                      "Wenn ein Weak Low gebildet wurde, dann eher Korrektur erwarten.",
+                      "Dann Richtung GP und kein TF.",
+                      "Nach langer Trendrichtung immer auf neues Weak High oder Weak Low warten.",
+                      "CHoCH im M15 abwarten.",
+                    ]}
+                  />
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="backtesting-dashboard" className="space-y-6">
