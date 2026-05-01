@@ -1,6 +1,11 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
@@ -71,7 +76,8 @@ IMG_R=https://www.tradingview.com/x/mUPvivuD/`;
 
 const strategies = ["BOS", "THP", "DMT"];
 
-const pairs = ["USDJPY", "GBPJPY", "USDCHF"];
+const defaultPairs = ["USDJPY", "GBPJPY", "USDCHF"];
+const pairsStorageKey = "trading-dashboard-pairs";
 
 const cardClass =
   "rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/70";
@@ -81,6 +87,28 @@ const navTriggerClass =
 const outlineButtonClass =
   "h-10 rounded-xl border-slate-200 bg-white px-4 text-slate-700 hover:bg-slate-50";
 const chartColors = ["#06b6d4", "#ef4444", "#94a3b8", "#f59e0b"];
+
+function getInitialPairs() {
+  if (typeof window === "undefined") return defaultPairs;
+
+  const stored = window.localStorage.getItem(pairsStorageKey);
+  if (!stored) return defaultPairs;
+
+  try {
+    const parsedPairs = JSON.parse(stored);
+    if (!Array.isArray(parsedPairs)) return defaultPairs;
+
+    const normalizedPairs = parsedPairs
+      .filter((pair) => typeof pair === "string")
+      .map((pair) => pair.trim().toUpperCase())
+      .filter(Boolean);
+
+    return Array.from(new Set([...defaultPairs, ...normalizedPairs]));
+  } catch {
+    window.localStorage.removeItem(pairsStorageKey);
+    return defaultPairs;
+  }
+}
 
 type Trade = {
   id: string;
@@ -117,6 +145,12 @@ type Backtest = {
   img_result: string | null;
   session_name: string | null;
   hour_block: string | null;
+  created_at: string;
+};
+type TradingPair = {
+  id: string;
+  user_id: string;
+  pair: string;
   created_at: string;
 };
 
@@ -365,6 +399,8 @@ export default function Home() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("input");
+  const [pairs, setPairs] = useState(getInitialPairs);
+  const [newPair, setNewPair] = useState("");
 
   const [rawBacktestInput, setRawBacktestInput] = useState(defaultBacktestInput);
   const [selectedBacktestPair, setSelectedBacktestPair] = useState("USDJPY");
@@ -548,7 +584,7 @@ export default function Home() {
       bestPair,
       bestSession,
     };
-  }, [stats, trades]);
+  }, [pairs, stats, trades]);
 
   const backtestStats = useMemo(() => {
     const total = backtests.length;
@@ -691,7 +727,11 @@ export default function Home() {
       bestStrategy,
       bestPair,
     };
-  }, [backtestStats, backtests]);
+  }, [backtestStats, backtests, pairs]);
+
+  useEffect(() => {
+    window.localStorage.setItem(pairsStorageKey, JSON.stringify(pairs));
+  }, [pairs]);
 
   useEffect(() => {
     async function init() {
@@ -714,10 +754,29 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  async function loadPairs() {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("trading_pairs")
+      .select("*")
+      .order("pair", { ascending: true });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    const savedPairs = ((data || []) as TradingPair[]).map((item) => item.pair);
+    setPairs(Array.from(new Set([...defaultPairs, ...savedPairs])));
+  }
+
   useEffect(() => {
     if (!user) return;
     loadTrades();
     loadBacktests();
+    void Promise.resolve().then(() => loadPairs());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function loadTrades() {
@@ -821,6 +880,33 @@ export default function Home() {
 
   async function signOut() {
     await supabase.auth.signOut();
+  }
+
+  async function addPair() {
+    if (!user) return;
+
+    const normalized = newPair.trim().toUpperCase().replace(/\s+/g, "");
+    if (!normalized) return;
+
+    if (!pairs.includes(normalized)) {
+      const { error } = await supabase.from("trading_pairs").insert({
+        user_id: user.id,
+        pair: normalized,
+      });
+
+      if (error && error.code !== "23505") {
+        alert(error.message);
+        return;
+      }
+    }
+
+    setPairs((currentPairs) => {
+      if (currentPairs.includes(normalized)) return currentPairs;
+      return [...currentPairs, normalized].sort();
+    });
+    setSelectedPair(normalized);
+    setSelectedBacktestPair(normalized);
+    setNewPair("");
   }
 
   if (loading) {
@@ -968,18 +1054,39 @@ export default function Home() {
                 <CardContent className="space-y-4">
                   <div>
                     <label className="text-sm font-medium">Pair</label>
-                    <Select value={selectedPair} onValueChange={setSelectedPair}>
-                      <SelectTrigger className="mt-2 w-full md:w-64">
-                        <SelectValue placeholder="Pair wählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {pairs.map((pair) => (
-                          <SelectItem key={pair} value={pair}>
-                            {pair}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="mt-2 flex flex-col gap-2 md:flex-row">
+                      <Select value={selectedPair} onValueChange={setSelectedPair}>
+                        <SelectTrigger className="w-full md:w-64">
+                          <SelectValue placeholder="Pair wählen" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {pairs.map((pair) => (
+                            <SelectItem key={pair} value={pair}>
+                              {pair}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newPair}
+                          onChange={(event) => setNewPair(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void addPair();
+                          }}
+                          placeholder="Neues Pair"
+                          className="h-10 w-full rounded-xl md:w-40"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void addPair()}
+                          className={outlineButtonClass}
+                        >
+                          Hinzufügen
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
                   <Textarea
@@ -1682,21 +1789,42 @@ export default function Home() {
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <label className="text-sm font-medium">Pair</label>
-                      <Select
-                        value={selectedBacktestPair}
-                        onValueChange={setSelectedBacktestPair}
-                      >
-                        <SelectTrigger className="mt-2">
-                          <SelectValue placeholder="Pair wählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {pairs.map((pair) => (
-                            <SelectItem key={pair} value={pair}>
-                              {pair}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <Select
+                          value={selectedBacktestPair}
+                          onValueChange={setSelectedBacktestPair}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Pair wählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pairs.map((pair) => (
+                              <SelectItem key={pair} value={pair}>
+                                {pair}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newPair}
+                            onChange={(event) => setNewPair(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void addPair();
+                            }}
+                            placeholder="Neues Pair"
+                            className="h-10 rounded-xl"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void addPair()}
+                            className={outlineButtonClass}
+                          >
+                            Hinzufügen
+                          </Button>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
