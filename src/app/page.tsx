@@ -74,7 +74,9 @@ TF=15,5
 STRAT=BOS
 SETUP=Trend,CHoCH15,Bos15
 RES=TP
-IMG_R=https://www.tradingview.com/x/mUPvivuD/`;
+NEWS=N
+IMG_R=https://www.tradingview.com/x/mUPvivuD/
+NOTE=`;
 
 const strategies = ["BOS", "THP", "DMT"];
 
@@ -145,7 +147,9 @@ type Backtest = {
   strategy: string;
   setup_tags: string[] | null;
   result: string | null;
+  news: string | null;
   img_result: string | null;
+  note: string | null;
   session_name: string | null;
   hour_block: string | null;
   created_at: string;
@@ -213,6 +217,15 @@ function normalizeRules(value?: string) {
   if (["y", "yes", "ja", "j", "true", "1"].includes(v)) return "Ja";
   if (["n", "no", "nein", "false", "0"].includes(v)) return "Nein";
   if (["p", "partial", "teilweise"].includes(v)) return "Teilweise";
+
+  return value || "";
+}
+
+function normalizeNews(value?: string) {
+  const v = (value || "").toLowerCase();
+
+  if (["y", "yes", "ja", "j", "true", "1"].includes(v)) return "Ja";
+  if (["n", "no", "nein", "false", "0"].includes(v)) return "Nein";
 
   return value || "";
 }
@@ -462,7 +475,9 @@ export default function Home() {
       strategy: (parsedBacktest.STRAT || "BOS").toUpperCase(),
       setup_tags: getSetupTags(parsedBacktest.SETUP),
       result: (parsedBacktest.RES || "").toUpperCase(),
+      news: normalizeNews(parsedBacktest.NEWS),
       img_result: parsedBacktest.IMG_R || null,
+      note: parsedBacktest.NOTE || null,
       session_name: mapSession(parsedBacktest.T),
       hour_block: mapHourBlock(parsedBacktest.T),
     };
@@ -676,6 +691,19 @@ export default function Home() {
       };
     });
 
+    const newsData = ["Ja", "Nein", ""].map((news) => {
+      const items = backtests.filter((item) => (item.news || "") === news);
+      const wins = items.filter((item) => item.result === "TP").length;
+      const losses = items.filter((item) => item.result === "SL").length;
+      const decided = wins + losses;
+
+      return {
+        name: news || "Unklar",
+        tests: items.length,
+        winrate: decided ? Math.round((wins / decided) * 100) : 0,
+      };
+    });
+
     const tags = new Map<string, { total: number; wins: number; losses: number }>();
     backtests.forEach((item) => {
       (item.setup_tags || []).forEach((tag) => {
@@ -739,6 +767,7 @@ export default function Home() {
       strategyData,
       pairData,
       sessionData,
+      newsData,
       setupData,
       timelineData,
       bestStrategy,
@@ -1841,6 +1870,63 @@ export default function Home() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
+              <ChartCard title="News vs. Kein News">
+                <div className="h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={backtestAnalytics.newsData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 12, fill: "#64748b" }}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12, fill: "#64748b" }}
+                        tickLine={false}
+                        axisLine={false}
+                        domain={[0, 100]}
+                      />
+                      <Tooltip />
+                      <Bar
+                        dataKey="winrate"
+                        name="Winrate %"
+                        fill="#f59e0b"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+
+              <ChartCard title="Backtest Notes">
+                <div className="space-y-3">
+                  {backtests.filter((item) => item.note).length === 0 ? (
+                    <EmptyChartState text="Notes erscheinen nach Backtests mit NOTE=..." />
+                  ) : (
+                    backtests
+                      .filter((item) => item.note)
+                      .slice(0, 5)
+                      .map((item) => (
+                        <div key={item.id} className={panelClass}>
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <Badge variant="secondary">{item.strategy}</Badge>
+                            <span>
+                              {item.test_date} · {item.pair} · News{" "}
+                              {item.news || "-"}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-sm text-slate-700">
+                            {item.note}
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </ChartCard>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-2">
               <ChartCard title="Tests pro Session">
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -2090,6 +2176,9 @@ export default function Home() {
                       <Badge variant="secondary">{backtestPreview.pair}</Badge>
                       <Badge variant="outline">{backtestPreview.side}</Badge>
                       <Badge variant="outline">{backtestPreview.result}</Badge>
+                      <Badge variant="outline">
+                        News {backtestPreview.news || "-"}
+                      </Badge>
                       <Badge variant="outline">{backtestPreview.session_name}</Badge>
                     </div>
 
@@ -2104,6 +2193,13 @@ export default function Home() {
                     <div className="mt-4">
                       <LinkItem href={backtestPreview.img_result} label="Result Bild" />
                     </div>
+
+                    {backtestPreview.note && (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="text-muted-foreground">Note</div>
+                        <div className="mt-1">{backtestPreview.note}</div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2131,6 +2227,7 @@ export default function Home() {
                           <Badge variant="secondary">{item.result}</Badge>
                           <Badge variant="outline">{item.pair}</Badge>
                           <Badge variant="outline">{item.side}</Badge>
+                          <Badge variant="outline">News {item.news || "-"}</Badge>
                           <Badge variant="outline">{item.session_name}</Badge>
                           <span className="text-sm text-muted-foreground">
                             {item.test_date} · {item.test_time}
@@ -2146,6 +2243,12 @@ export default function Home() {
                         </div>
 
                         <LinkItem href={item.img_result} label="Result Bild" />
+
+                        {item.note && (
+                          <div className="max-w-3xl text-sm text-muted-foreground">
+                            Note: {item.note}
+                          </div>
+                        )}
                       </div>
 
                       <Button
