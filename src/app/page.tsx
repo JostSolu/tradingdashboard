@@ -279,6 +279,14 @@ function getSetupTags(value?: string) {
     .filter(Boolean);
 }
 
+function getTimeframeTags(value?: string | null) {
+  return (value || "")
+    .split(",")
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean)
+    .map((item) => (/^\d+$/.test(item) ? `M${item}` : item));
+}
+
 function LinkItem({ href, label }: { href?: string | null; label: string }) {
   if (!href) return null;
 
@@ -430,6 +438,8 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("input");
   const [pairs, setPairs] = useState(getInitialPairs);
   const [newPair, setNewPair] = useState("");
+  const [tradeStatsPair, setTradeStatsPair] = useState("ALL");
+  const [backtestStatsPair, setBacktestStatsPair] = useState("ALL");
 
   const [rawBacktestInput, setRawBacktestInput] = useState(defaultBacktestInput);
   const [selectedBacktestPair, setSelectedBacktestPair] = useState("USDJPY");
@@ -496,6 +506,24 @@ export default function Home() {
 
     return { total, wins, losses, be, na, winrate, rulesRate };
   }, [trades]);
+
+  const inputStats = useMemo(() => {
+    const items =
+      tradeStatsPair === "ALL"
+        ? trades
+        : trades.filter((trade) => trade.pair === tradeStatsPair);
+    const total = items.length;
+    const wins = items.filter((trade) => trade.result === "TP").length;
+    const losses = items.filter((trade) => trade.result === "SL").length;
+    const be = items.filter((trade) => trade.result === "BE").length;
+    const na = items.filter((trade) => trade.result === "NA").length;
+    const decided = wins + losses;
+    const winrate = decided ? Math.round((wins / decided) * 100) : 0;
+    const rulesOk = items.filter((trade) => trade.rules_followed === "Ja").length;
+    const rulesRate = total ? Math.round((rulesOk / total) * 100) : 0;
+
+    return { total, wins, losses, be, na, winrate, rulesRate };
+  }, [tradeStatsPair, trades]);
 
   const tradeAnalytics = useMemo(() => {
     const resultData = [
@@ -572,6 +600,36 @@ export default function Home() {
       .sort((a, b) => b.trades - a.trades)
       .slice(0, 6);
 
+    const timeframes = new Map<
+      string,
+      { total: number; wins: number; losses: number }
+    >();
+    trades.forEach((trade) => {
+      getTimeframeTags(trade.timeframes).forEach((timeframe) => {
+        const current = timeframes.get(timeframe) || {
+          total: 0,
+          wins: 0,
+          losses: 0,
+        };
+        current.total += 1;
+        if (trade.result === "TP") current.wins += 1;
+        if (trade.result === "SL") current.losses += 1;
+        timeframes.set(timeframe, current);
+      });
+    });
+
+    const timeframeData = Array.from(timeframes.entries())
+      .map(([timeframe, item]) => {
+        const decided = item.wins + item.losses;
+
+        return {
+          name: timeframe,
+          trades: item.total,
+          winrate: decided ? Math.round((item.wins / decided) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.trades - a.trades);
+
     let cumulative = 0;
     let decided = 0;
     let wins = 0;
@@ -612,6 +670,7 @@ export default function Home() {
       pairData,
       rulesData,
       setupData,
+      timeframeData,
       timelineData,
       bestPair,
       bestSession,
@@ -646,6 +705,22 @@ export default function Home() {
 
     return { total, wins, losses, be, na, winrate, byStrategy };
   }, [backtests]);
+
+  const backtestInputStats = useMemo(() => {
+    const items =
+      backtestStatsPair === "ALL"
+        ? backtests
+        : backtests.filter((item) => item.pair === backtestStatsPair);
+    const total = items.length;
+    const wins = items.filter((item) => item.result === "TP").length;
+    const losses = items.filter((item) => item.result === "SL").length;
+    const be = items.filter((item) => item.result === "BE").length;
+    const na = items.filter((item) => item.result === "NA").length;
+    const decided = wins + losses;
+    const winrate = decided ? Math.round((wins / decided) * 100) : 0;
+
+    return { total, wins, losses, be, na, winrate };
+  }, [backtestStatsPair, backtests]);
 
   const backtestAnalytics = useMemo(() => {
     const resultData = [
@@ -728,6 +803,36 @@ export default function Home() {
       .sort((a, b) => b.tests - a.tests)
       .slice(0, 6);
 
+    const timeframes = new Map<
+      string,
+      { total: number; wins: number; losses: number }
+    >();
+    backtests.forEach((item) => {
+      getTimeframeTags(item.timeframes).forEach((timeframe) => {
+        const current = timeframes.get(timeframe) || {
+          total: 0,
+          wins: 0,
+          losses: 0,
+        };
+        current.total += 1;
+        if (item.result === "TP") current.wins += 1;
+        if (item.result === "SL") current.losses += 1;
+        timeframes.set(timeframe, current);
+      });
+    });
+
+    const timeframeData = Array.from(timeframes.entries())
+      .map(([timeframe, item]) => {
+        const decided = item.wins + item.losses;
+
+        return {
+          name: timeframe,
+          tests: item.total,
+          winrate: decided ? Math.round((item.wins / decided) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.tests - a.tests);
+
     let cumulative = 0;
     let decided = 0;
     let wins = 0;
@@ -769,6 +874,7 @@ export default function Home() {
       sessionData,
       newsData,
       setupData,
+      timeframeData,
       timelineData,
       bestStrategy,
       bestPair,
@@ -1090,15 +1196,64 @@ export default function Home() {
 
           <div className="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 md:p-8">
           <TabsContent value="input" className="space-y-6">
+            <Card className={cardClass}>
+              <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Statistik-Ansicht
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Zeige alle Trades oder nur ein bestimmtes Pair.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={tradeStatsPair === "ALL" ? "default" : "outline"}
+                    onClick={() => setTradeStatsPair("ALL")}
+                    className={
+                      tradeStatsPair === "ALL"
+                        ? "h-9 rounded-xl bg-slate-950 px-4 text-white hover:bg-slate-800"
+                        : outlineButtonClass
+                    }
+                  >
+                    Alle
+                  </Button>
+                  {pairs.map((pair) => (
+                    <Button
+                      key={pair}
+                      type="button"
+                      variant={tradeStatsPair === pair ? "default" : "outline"}
+                      onClick={() => setTradeStatsPair(pair)}
+                      className={
+                        tradeStatsPair === pair
+                          ? "h-9 rounded-xl bg-cyan-500 px-4 text-white hover:bg-cyan-600"
+                          : outlineButtonClass
+                      }
+                    >
+                      {pair}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid gap-4 md:grid-cols-4">
-              <StatCard title="Trades gesamt" value={stats.total} />
+              <StatCard
+                title={
+                  tradeStatsPair === "ALL"
+                    ? "Trades gesamt"
+                    : `Trades ${tradeStatsPair}`
+                }
+                value={inputStats.total}
+              />
               <StatCard
                 title="Winrate"
-                value={`${stats.winrate}%`}
-                detail={`${stats.wins} TP / ${stats.losses} SL`}
+                value={`${inputStats.winrate}%`}
+                detail={`${inputStats.wins} TP / ${inputStats.losses} SL`}
               />
-              <StatCard title="Break Even / NA" value={`${stats.be} / ${stats.na}`} />
-              <StatCard title="Regeln eingehalten" value={`${stats.rulesRate}%`} />
+              <StatCard title="Break Even / NA" value={`${inputStats.be} / ${inputStats.na}`} />
+              <StatCard title="Regeln eingehalten" value={`${inputStats.rulesRate}%`} />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -1441,6 +1596,39 @@ export default function Home() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
+              <ChartCard title="Timeframe-Winrate">
+                {tradeAnalytics.timeframeData.length > 0 ? (
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={tradeAnalytics.timeframeData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          tickLine={false}
+                          axisLine={false}
+                          domain={[0, 100]}
+                        />
+                        <Tooltip />
+                        <Bar
+                          dataKey="winrate"
+                          name="Winrate %"
+                          fill="#f59e0b"
+                          radius={[8, 8, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <EmptyChartState text="Timeframes erscheinen nach gespeicherten Trades mit TF=..." />
+                )}
+              </ChartCard>
+
               <ChartCard title="Regel-Disziplin">
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1870,6 +2058,39 @@ export default function Home() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-2">
+              <ChartCard title="Backtest Timeframe-Winrate">
+                {backtestAnalytics.timeframeData.length > 0 ? (
+                  <div className="h-[280px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={backtestAnalytics.timeframeData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis
+                          dataKey="name"
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 12, fill: "#64748b" }}
+                          tickLine={false}
+                          axisLine={false}
+                          domain={[0, 100]}
+                        />
+                        <Tooltip />
+                        <Bar
+                          dataKey="winrate"
+                          name="Winrate %"
+                          fill="#14b8a6"
+                          radius={[8, 8, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <EmptyChartState text="Timeframes erscheinen nach Backtests mit TF=..." />
+                )}
+              </ChartCard>
+
               <ChartCard title="News vs. Kein News">
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1997,12 +2218,58 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="backtesting" className="space-y-6">
+            <Card className={cardClass}>
+              <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Backtest-Ansicht
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Zeige alle Backtests oder nur ein bestimmtes Pair.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={backtestStatsPair === "ALL" ? "default" : "outline"}
+                    onClick={() => setBacktestStatsPair("ALL")}
+                    className={
+                      backtestStatsPair === "ALL"
+                        ? "h-9 rounded-xl bg-slate-950 px-4 text-white hover:bg-slate-800"
+                        : outlineButtonClass
+                    }
+                  >
+                    Alle
+                  </Button>
+                  {pairs.map((pair) => (
+                    <Button
+                      key={pair}
+                      type="button"
+                      variant={backtestStatsPair === pair ? "default" : "outline"}
+                      onClick={() => setBacktestStatsPair(pair)}
+                      className={
+                        backtestStatsPair === pair
+                          ? "h-9 rounded-xl bg-cyan-500 px-4 text-white hover:bg-cyan-600"
+                          : outlineButtonClass
+                      }
+                    >
+                      {pair}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid gap-4 md:grid-cols-4">
               <Card className={cardClass}>
                 <CardContent className="p-5">
-                  <div className="text-sm text-muted-foreground">Backtests gesamt</div>
+                  <div className="text-sm text-muted-foreground">
+                    {backtestStatsPair === "ALL"
+                      ? "Backtests gesamt"
+                      : `Backtests ${backtestStatsPair}`}
+                  </div>
                   <div className="mt-2 text-3xl font-semibold">
-                    {backtestStats.total}
+                    {backtestInputStats.total}
                   </div>
                 </CardContent>
               </Card>
@@ -2011,10 +2278,10 @@ export default function Home() {
                 <CardContent className="p-5">
                   <div className="text-sm text-muted-foreground">Backtest Winrate</div>
                   <div className="mt-2 text-3xl font-semibold">
-                    {backtestStats.winrate}%
+                    {backtestInputStats.winrate}%
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {backtestStats.wins} TP / {backtestStats.losses} SL
+                    {backtestInputStats.wins} TP / {backtestInputStats.losses} SL
                   </div>
                 </CardContent>
               </Card>
@@ -2023,7 +2290,7 @@ export default function Home() {
                 <CardContent className="p-5">
                   <div className="text-sm text-muted-foreground">BE / NA</div>
                   <div className="mt-2 text-3xl font-semibold">
-                    {backtestStats.be} / {backtestStats.na}
+                    {backtestInputStats.be} / {backtestInputStats.na}
                   </div>
                 </CardContent>
               </Card>
