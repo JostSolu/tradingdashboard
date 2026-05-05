@@ -56,11 +56,15 @@ import {
 const defaultInput = `D=
 T=
 S=
+R=
+RP=
 TF=15
 STRAT=
 SETUP=Trend,CHoCH15,Bos15
 RES=
 NEWS=
+IMG_M=
+IMG_L=
 IMG_R=
 NOTE=`;
 
@@ -125,6 +129,8 @@ type Trade = {
   setup_tags: string[] | null;
   result: string | null;
   news: string | null;
+  img_macro: string | null;
+  img_local: string | null;
   img_result: string | null;
   note: string | null;
   session_name: string | null;
@@ -444,6 +450,8 @@ export default function Home() {
       setup_tags: getSetupTags(parsed.SETUP),
       result: (parsed.RES || "").toUpperCase(),
       news: normalizeNews(parsed.NEWS),
+      img_macro: parsed.IMG_M || null,
+      img_local: parsed.IMG_L || null,
       img_result: parsed.IMG_R || null,
       note: parsed.NOTE || null,
       session_name: mapSession(parsed.T),
@@ -1400,7 +1408,11 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <LinkItem href={preview.img_result} label="Result Bild" />
+                      <div className="flex gap-4">
+                        <LinkItem href={preview.img_macro} label="Makro" />
+                        <LinkItem href={preview.img_local} label="Lokal" />
+                        <LinkItem href={preview.img_result} label="Result Bild" />
+                      </div>
 
                       {preview.note && (
                         <div className={`${panelClass} text-sm`}>
@@ -1730,6 +1742,8 @@ export default function Home() {
                         <div className="text-sm">
                           <span className="font-medium">Risk:</span>{" "}
                           {trade.risk}% ·{" "}
+                          <span className="font-medium">Plan:</span>{" "}
+                          {trade.rr_plan || "-"} ·{" "}
                           <span className="font-medium">TF:</span>{" "}
                           {trade.timeframes} ·{" "}
                           <span className="font-medium">News:</span>{" "}
@@ -1750,7 +1764,11 @@ export default function Home() {
                           </div>
                         )}
 
-                        <LinkItem href={trade.img_result} label="Result Bild" />
+                        <div className="flex gap-4">
+                          <LinkItem href={trade.img_macro} label="Makro" />
+                          <LinkItem href={trade.img_local} label="Lokal" />
+                          <LinkItem href={trade.img_result} label="Result Bild" />
+                        </div>
                       </div>
 
                       <Button
