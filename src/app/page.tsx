@@ -53,19 +53,16 @@ import {
   YAxis,
 } from "recharts";
 
-const defaultInput = `D=30.4.26
-T=09.00
-S=S
-R=0.5
-RP=1:2
-TF=15,5
+const defaultInput = `D=
+T=
+S=
+TF=15
+STRAT=
 SETUP=Trend,CHoCH15,Bos15
-RES=TP
-RULES=y
-IMG_M=https://www.tradingview.com/x/Wy6caLc6/
-IMG_L=https://www.tradingview.com/x/Q2iKBigt/
-IMG_R=https://www.tradingview.com/x/mUPvivuD/
-NOTE=News`;
+RES=
+NEWS=
+IMG_R=
+NOTE=`;
 
 const defaultBacktestInput = `D=30.4.26
 T=09.00
@@ -127,9 +124,7 @@ type Trade = {
   strategy: string | null;
   setup_tags: string[] | null;
   result: string | null;
-  rules_followed: string | null;
-  img_macro: string | null;
-  img_local: string | null;
+  news: string | null;
   img_result: string | null;
   note: string | null;
   session_name: string | null;
@@ -209,16 +204,6 @@ function normalizeSide(value?: string) {
   if (v === "S") return "SHORT";
 
   return v;
-}
-
-function normalizeRules(value?: string) {
-  const v = (value || "").toLowerCase();
-
-  if (["y", "yes", "ja", "j", "true", "1"].includes(v)) return "Ja";
-  if (["n", "no", "nein", "false", "0"].includes(v)) return "Nein";
-  if (["p", "partial", "teilweise"].includes(v)) return "Teilweise";
-
-  return value || "";
 }
 
 function normalizeNews(value?: string) {
@@ -458,9 +443,7 @@ export default function Home() {
       strategy: (parsed.STRAT || "").toUpperCase() || null,
       setup_tags: getSetupTags(parsed.SETUP),
       result: (parsed.RES || "").toUpperCase(),
-      rules_followed: normalizeRules(parsed.RULES),
-      img_macro: parsed.IMG_M || null,
-      img_local: parsed.IMG_L || null,
+      news: normalizeNews(parsed.NEWS),
       img_result: parsed.IMG_R || null,
       note: parsed.NOTE || null,
       session_name: mapSession(parsed.T),
@@ -501,10 +484,9 @@ export default function Home() {
     const na = trades.filter((t) => t.result === "NA").length;
     const decided = wins + losses;
     const winrate = decided ? Math.round((wins / decided) * 100) : 0;
-    const rulesOk = trades.filter((t) => t.rules_followed === "Ja").length;
-    const rulesRate = total ? Math.round((rulesOk / total) * 100) : 0;
+    const newsYes = trades.filter((t) => t.news === "Ja").length;
 
-    return { total, wins, losses, be, na, winrate, rulesRate };
+    return { total, wins, losses, be, na, winrate, newsYes };
   }, [trades]);
 
   const inputStats = useMemo(() => {
@@ -519,10 +501,9 @@ export default function Home() {
     const na = items.filter((trade) => trade.result === "NA").length;
     const decided = wins + losses;
     const winrate = decided ? Math.round((wins / decided) * 100) : 0;
-    const rulesOk = items.filter((trade) => trade.rules_followed === "Ja").length;
-    const rulesRate = total ? Math.round((rulesOk / total) * 100) : 0;
+    const newsYes = items.filter((trade) => trade.news === "Ja").length;
 
-    return { total, wins, losses, be, na, winrate, rulesRate };
+    return { total, wins, losses, be, na, winrate, newsYes };
   }, [tradeStatsPair, trades]);
 
   const tradeAnalytics = useMemo(() => {
@@ -563,14 +544,14 @@ export default function Home() {
       };
     });
 
-    const rulesData = ["Ja", "Nein", "Teilweise", ""].map((rules) => {
-      const items = trades.filter((trade) => (trade.rules_followed || "") === rules);
+    const newsData = ["Ja", "Nein", ""].map((news) => {
+      const items = trades.filter((trade) => (trade.news || "") === news);
       const wins = items.filter((trade) => trade.result === "TP").length;
       const losses = items.filter((trade) => trade.result === "SL").length;
       const decided = wins + losses;
 
       return {
-        name: rules || "Unklar",
+        name: news || "Unklar",
         trades: items.length,
         winrate: decided ? Math.round((wins / decided) * 100) : 0,
       };
@@ -668,7 +649,7 @@ export default function Home() {
       resultData,
       sessionData,
       pairData,
-      rulesData,
+      newsData,
       setupData,
       timeframeData,
       timelineData,
@@ -1005,6 +986,11 @@ export default function Home() {
       return;
     }
 
+    if (!preview.strategy) {
+      alert("Strategie fehlt.");
+      return;
+    }
+
     const { error } = await supabase.from("trades").insert({
       user_id: user.id,
       ...preview,
@@ -1253,7 +1239,7 @@ export default function Home() {
                 detail={`${inputStats.wins} TP / ${inputStats.losses} SL`}
               />
               <StatCard title="Break Even / NA" value={`${inputStats.be} / ${inputStats.na}`} />
-              <StatCard title="Regeln eingehalten" value={`${inputStats.rulesRate}%`} />
+              <StatCard title="News-Trades" value={inputStats.newsYes} />
             </div>
 
             <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
@@ -1262,40 +1248,67 @@ export default function Home() {
                   <CardTitle>Neuer Trade</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Pair</label>
-                    <div className="mt-2 flex flex-col gap-2 md:flex-row">
-                      <Select value={selectedPair} onValueChange={setSelectedPair}>
-                        <SelectTrigger className="w-full md:w-64">
-                          <SelectValue placeholder="Pair wählen" />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium">Pair</label>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <Select value={selectedPair} onValueChange={setSelectedPair}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Pair wählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {pairs.map((pair) => (
+                              <SelectItem key={pair} value={pair}>
+                                {pair}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newPair}
+                            onChange={(event) => setNewPair(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void addPair();
+                            }}
+                            placeholder="Neues Pair"
+                            className="h-10 rounded-xl"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => void addPair()}
+                            className={outlineButtonClass}
+                          >
+                            Hinzufügen
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium">Strategie</label>
+                      <Select
+                        value={preview.strategy || ""}
+                        onValueChange={(value) => {
+                          const next = rawInput.includes("STRAT=")
+                            ? rawInput.replace(/STRAT=.*/i, `STRAT=${value}`)
+                            : `${rawInput}\nSTRAT=${value}`;
+
+                          setRawInput(next);
+                        }}
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Strategie wählen" />
                         </SelectTrigger>
                         <SelectContent>
-                          {pairs.map((pair) => (
-                            <SelectItem key={pair} value={pair}>
-                              {pair}
+                          {strategies.map((strategy) => (
+                            <SelectItem key={strategy} value={strategy}>
+                              {strategy}
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
-                      <div className="flex gap-2">
-                        <Input
-                          value={newPair}
-                          onChange={(event) => setNewPair(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") void addPair();
-                          }}
-                          placeholder="Neues Pair"
-                          className="h-10 w-full rounded-xl md:w-40"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => void addPair()}
-                          className={outlineButtonClass}
-                        >
-                          Hinzufügen
-                        </Button>
-                      </div>
                     </div>
                   </div>
 
@@ -1368,6 +1381,10 @@ export default function Home() {
                             {preview.result || "-"} / {resultType(preview.result)}
                           </div>
                         </div>
+                        <div className={panelClass}>
+                          <div className="text-muted-foreground">News</div>
+                          <div className="font-medium">{preview.news || "-"}</div>
+                        </div>
                       </div>
 
                       <div>
@@ -1383,11 +1400,7 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <div className="flex gap-4">
-                        <LinkItem href={preview.img_macro} label="Makro" />
-                        <LinkItem href={preview.img_local} label="Lokal" />
-                        <LinkItem href={preview.img_result} label="Result" />
-                      </div>
+                      <LinkItem href={preview.img_result} label="Result Bild" />
 
                       {preview.note && (
                         <div className={`${panelClass} text-sm`}>
@@ -1629,10 +1642,10 @@ export default function Home() {
                 )}
               </ChartCard>
 
-              <ChartCard title="Regel-Disziplin">
+              <ChartCard title="News vs. Kein News">
                 <div className="h-[280px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={tradeAnalytics.rulesData}>
+                    <BarChart data={tradeAnalytics.newsData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                       <XAxis
                         dataKey="name"
@@ -1717,12 +1730,10 @@ export default function Home() {
                         <div className="text-sm">
                           <span className="font-medium">Risk:</span>{" "}
                           {trade.risk}% ·{" "}
-                          <span className="font-medium">Plan:</span>{" "}
-                          {trade.rr_plan} ·{" "}
                           <span className="font-medium">TF:</span>{" "}
                           {trade.timeframes} ·{" "}
-                          <span className="font-medium">Rules:</span>{" "}
-                          {trade.rules_followed}
+                          <span className="font-medium">News:</span>{" "}
+                          {trade.news || "-"}
                         </div>
 
                         <div className="flex flex-wrap gap-2">
@@ -1739,11 +1750,7 @@ export default function Home() {
                           </div>
                         )}
 
-                        <div className="flex gap-4">
-                          <LinkItem href={trade.img_macro} label="Makro" />
-                          <LinkItem href={trade.img_local} label="Lokal" />
-                          <LinkItem href={trade.img_result} label="Result" />
-                        </div>
+                        <LinkItem href={trade.img_result} label="Result Bild" />
                       </div>
 
                       <Button
