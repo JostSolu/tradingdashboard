@@ -225,11 +225,27 @@ function resultType(value?: string | null) {
   const v = (value || "").toUpperCase();
 
   if (v === "TP") return "Win";
+  if (v === "TG") return "Teilgewinn";
   if (v === "SL") return "Loss";
   if (v === "BE") return "Break Even";
   if (v === "NA") return "Nicht abgeholt";
 
   return "Offen";
+}
+
+function isPositiveResult(value?: string | null) {
+  const v = (value || "").toUpperCase();
+  return v === "TP" || v === "TG";
+}
+
+function resultScore(value?: string | null) {
+  const v = (value || "").toUpperCase();
+
+  if (v === "TP") return 1;
+  if (v === "TG") return 0.5;
+  if (v === "SL") return -1;
+
+  return 0;
 }
 
 function getHour(time?: string) {
@@ -486,7 +502,9 @@ export default function Home() {
 
   const stats = useMemo(() => {
     const total = trades.length;
-    const wins = trades.filter((t) => t.result === "TP").length;
+    const wins = trades.filter((t) => isPositiveResult(t.result)).length;
+    const tpWins = trades.filter((t) => t.result === "TP").length;
+    const tgWins = trades.filter((t) => t.result === "TG").length;
     const losses = trades.filter((t) => t.result === "SL").length;
     const be = trades.filter((t) => t.result === "BE").length;
     const na = trades.filter((t) => t.result === "NA").length;
@@ -494,7 +512,7 @@ export default function Home() {
     const winrate = decided ? Math.round((wins / decided) * 100) : 0;
     const newsYes = trades.filter((t) => t.news === "Ja").length;
 
-    return { total, wins, losses, be, na, winrate, newsYes };
+    return { total, wins, tpWins, tgWins, losses, be, na, winrate, newsYes };
   }, [trades]);
 
   const inputStats = useMemo(() => {
@@ -503,7 +521,9 @@ export default function Home() {
         ? trades
         : trades.filter((trade) => trade.pair === tradeStatsPair);
     const total = items.length;
-    const wins = items.filter((trade) => trade.result === "TP").length;
+    const wins = items.filter((trade) => isPositiveResult(trade.result)).length;
+    const tpWins = items.filter((trade) => trade.result === "TP").length;
+    const tgWins = items.filter((trade) => trade.result === "TG").length;
     const losses = items.filter((trade) => trade.result === "SL").length;
     const be = items.filter((trade) => trade.result === "BE").length;
     const na = items.filter((trade) => trade.result === "NA").length;
@@ -511,12 +531,13 @@ export default function Home() {
     const winrate = decided ? Math.round((wins / decided) * 100) : 0;
     const newsYes = items.filter((trade) => trade.news === "Ja").length;
 
-    return { total, wins, losses, be, na, winrate, newsYes };
+    return { total, wins, tpWins, tgWins, losses, be, na, winrate, newsYes };
   }, [tradeStatsPair, trades]);
 
   const tradeAnalytics = useMemo(() => {
     const resultData = [
-      { name: "TP", value: stats.wins },
+      { name: "TP", value: stats.tpWins },
+      { name: "TG", value: stats.tgWins },
       { name: "SL", value: stats.losses },
       { name: "BE", value: stats.be },
       { name: "NA", value: stats.na },
@@ -525,7 +546,7 @@ export default function Home() {
     const sessionNames = ["Asia", "London", "New York", "Late / Übergang"];
     const sessionData = sessionNames.map((session) => {
       const items = trades.filter((trade) => trade.session_name === session);
-      const wins = items.filter((trade) => trade.result === "TP").length;
+      const wins = items.filter((trade) => isPositiveResult(trade.result)).length;
       const losses = items.filter((trade) => trade.result === "SL").length;
       const decided = wins + losses;
 
@@ -541,7 +562,7 @@ export default function Home() {
     const pairNames = Array.from(new Set([...pairs, ...trades.map((t) => t.pair)]));
     const pairData = pairNames.map((pair) => {
       const items = trades.filter((trade) => trade.pair === pair);
-      const wins = items.filter((trade) => trade.result === "TP").length;
+      const wins = items.filter((trade) => isPositiveResult(trade.result)).length;
       const losses = items.filter((trade) => trade.result === "SL").length;
       const decided = wins + losses;
 
@@ -554,7 +575,7 @@ export default function Home() {
 
     const newsData = ["Ja", "Nein", ""].map((news) => {
       const items = trades.filter((trade) => (trade.news || "") === news);
-      const wins = items.filter((trade) => trade.result === "TP").length;
+      const wins = items.filter((trade) => isPositiveResult(trade.result)).length;
       const losses = items.filter((trade) => trade.result === "SL").length;
       const decided = wins + losses;
 
@@ -570,7 +591,7 @@ export default function Home() {
       (trade.setup_tags || []).forEach((tag) => {
         const current = tags.get(tag) || { total: 0, wins: 0, losses: 0 };
         current.total += 1;
-        if (trade.result === "TP") current.wins += 1;
+        if (isPositiveResult(trade.result)) current.wins += 1;
         if (trade.result === "SL") current.losses += 1;
         tags.set(tag, current);
       });
@@ -601,7 +622,7 @@ export default function Home() {
           losses: 0,
         };
         current.total += 1;
-        if (trade.result === "TP") current.wins += 1;
+        if (isPositiveResult(trade.result)) current.wins += 1;
         if (trade.result === "SL") current.losses += 1;
         timeframes.set(timeframe, current);
       });
@@ -629,13 +650,14 @@ export default function Home() {
         )
       )
       .map((trade, index) => {
-        if (trade.result === "TP") {
-          cumulative += 1;
+        const score = resultScore(trade.result);
+        if (score > 0) {
+          cumulative += score;
           decided += 1;
           wins += 1;
         }
-        if (trade.result === "SL") {
-          cumulative -= 1;
+        if (score < 0) {
+          cumulative += score;
           decided += 1;
         }
 
@@ -668,7 +690,9 @@ export default function Home() {
 
   const backtestStats = useMemo(() => {
     const total = backtests.length;
-    const wins = backtests.filter((t) => t.result === "TP").length;
+    const wins = backtests.filter((t) => isPositiveResult(t.result)).length;
+    const tpWins = backtests.filter((t) => t.result === "TP").length;
+    const tgWins = backtests.filter((t) => t.result === "TG").length;
     const losses = backtests.filter((t) => t.result === "SL").length;
     const be = backtests.filter((t) => t.result === "BE").length;
     const na = backtests.filter((t) => t.result === "NA").length;
@@ -677,7 +701,9 @@ export default function Home() {
 
     const byStrategy = strategies.map((strategy) => {
       const items = backtests.filter((t) => t.strategy === strategy);
-      const strategyWins = items.filter((t) => t.result === "TP").length;
+      const strategyWins = items.filter((t) => isPositiveResult(t.result)).length;
+      const strategyTpWins = items.filter((t) => t.result === "TP").length;
+      const strategyTgWins = items.filter((t) => t.result === "TG").length;
       const strategyLosses = items.filter((t) => t.result === "SL").length;
       const strategyDecided = strategyWins + strategyLosses;
 
@@ -685,6 +711,8 @@ export default function Home() {
         strategy,
         total: items.length,
         wins: strategyWins,
+        tpWins: strategyTpWins,
+        tgWins: strategyTgWins,
         losses: strategyLosses,
         winrate: strategyDecided
           ? Math.round((strategyWins / strategyDecided) * 100)
@@ -692,7 +720,7 @@ export default function Home() {
       };
     });
 
-    return { total, wins, losses, be, na, winrate, byStrategy };
+    return { total, wins, tpWins, tgWins, losses, be, na, winrate, byStrategy };
   }, [backtests]);
 
   const backtestInputStats = useMemo(() => {
@@ -701,19 +729,22 @@ export default function Home() {
         ? backtests
         : backtests.filter((item) => item.pair === backtestStatsPair);
     const total = items.length;
-    const wins = items.filter((item) => item.result === "TP").length;
+    const wins = items.filter((item) => isPositiveResult(item.result)).length;
+    const tpWins = items.filter((item) => item.result === "TP").length;
+    const tgWins = items.filter((item) => item.result === "TG").length;
     const losses = items.filter((item) => item.result === "SL").length;
     const be = items.filter((item) => item.result === "BE").length;
     const na = items.filter((item) => item.result === "NA").length;
     const decided = wins + losses;
     const winrate = decided ? Math.round((wins / decided) * 100) : 0;
 
-    return { total, wins, losses, be, na, winrate };
+    return { total, wins, tpWins, tgWins, losses, be, na, winrate };
   }, [backtestStatsPair, backtests]);
 
   const backtestAnalytics = useMemo(() => {
     const resultData = [
-      { name: "TP", value: backtestStats.wins },
+      { name: "TP", value: backtestStats.tpWins },
+      { name: "TG", value: backtestStats.tgWins },
       { name: "SL", value: backtestStats.losses },
       { name: "BE", value: backtestStats.be },
       { name: "NA", value: backtestStats.na },
@@ -730,7 +761,7 @@ export default function Home() {
     );
     const pairData = pairNames.map((pair) => {
       const items = backtests.filter((item) => item.pair === pair);
-      const wins = items.filter((item) => item.result === "TP").length;
+      const wins = items.filter((item) => isPositiveResult(item.result)).length;
       const losses = items.filter((item) => item.result === "SL").length;
       const decided = wins + losses;
 
@@ -744,7 +775,7 @@ export default function Home() {
     const sessionNames = ["Asia", "London", "New York", "Late / Übergang"];
     const sessionData = sessionNames.map((session) => {
       const items = backtests.filter((item) => item.session_name === session);
-      const wins = items.filter((item) => item.result === "TP").length;
+      const wins = items.filter((item) => isPositiveResult(item.result)).length;
       const losses = items.filter((item) => item.result === "SL").length;
       const decided = wins + losses;
 
@@ -757,7 +788,7 @@ export default function Home() {
 
     const newsData = ["Ja", "Nein", ""].map((news) => {
       const items = backtests.filter((item) => (item.news || "") === news);
-      const wins = items.filter((item) => item.result === "TP").length;
+      const wins = items.filter((item) => isPositiveResult(item.result)).length;
       const losses = items.filter((item) => item.result === "SL").length;
       const decided = wins + losses;
 
@@ -773,7 +804,7 @@ export default function Home() {
       (item.setup_tags || []).forEach((tag) => {
         const current = tags.get(tag) || { total: 0, wins: 0, losses: 0 };
         current.total += 1;
-        if (item.result === "TP") current.wins += 1;
+        if (isPositiveResult(item.result)) current.wins += 1;
         if (item.result === "SL") current.losses += 1;
         tags.set(tag, current);
       });
@@ -804,7 +835,7 @@ export default function Home() {
           losses: 0,
         };
         current.total += 1;
-        if (item.result === "TP") current.wins += 1;
+        if (isPositiveResult(item.result)) current.wins += 1;
         if (item.result === "SL") current.losses += 1;
         timeframes.set(timeframe, current);
       });
@@ -832,13 +863,14 @@ export default function Home() {
         )
       )
       .map((item, index) => {
-        if (item.result === "TP") {
-          cumulative += 1;
+        const score = resultScore(item.result);
+        if (score > 0) {
+          cumulative += score;
           decided += 1;
           wins += 1;
         }
-        if (item.result === "SL") {
-          cumulative -= 1;
+        if (score < 0) {
+          cumulative += score;
           decided += 1;
         }
 
@@ -1244,7 +1276,7 @@ export default function Home() {
               <StatCard
                 title="Winrate"
                 value={`${inputStats.winrate}%`}
-                detail={`${inputStats.wins} TP / ${inputStats.losses} SL`}
+                detail={`${inputStats.tpWins} TP + ${inputStats.tgWins} TG / ${inputStats.losses} SL`}
               />
               <StatCard title="Break Even / NA" value={`${inputStats.be} / ${inputStats.na}`} />
               <StatCard title="News-Trades" value={inputStats.newsYes} />
@@ -1490,7 +1522,7 @@ export default function Home() {
               <StatCard
                 title="Winrate"
                 value={`${stats.winrate}%`}
-                detail={`${stats.wins} TP / ${stats.losses} SL`}
+                detail={`${stats.tpWins} TP + ${stats.tgWins} TG / ${stats.losses} SL`}
               />
               <StatCard title="Bestes Pair" value={tradeAnalytics.bestPair?.name || "-"} />
               <StatCard
@@ -1933,7 +1965,7 @@ export default function Home() {
               <StatCard
                 title="Backtest Winrate"
                 value={`${backtestStats.winrate}%`}
-                detail={`${backtestStats.wins} TP / ${backtestStats.losses} SL`}
+                detail={`${backtestStats.tpWins} TP + ${backtestStats.tgWins} TG / ${backtestStats.losses} SL`}
               />
               <StatCard
                 title="Beste Strategie"
@@ -2306,7 +2338,7 @@ export default function Home() {
                     {backtestInputStats.winrate}%
                   </div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {backtestInputStats.wins} TP / {backtestInputStats.losses} SL
+                    {backtestInputStats.tpWins} TP + {backtestInputStats.tgWins} TG / {backtestInputStats.losses} SL
                   </div>
                 </CardContent>
               </Card>
@@ -2448,7 +2480,7 @@ export default function Home() {
                       </div>
 
                       <div className="mt-2 text-sm text-muted-foreground">
-                        {item.total} Tests · {item.wins} TP · {item.losses} SL
+                        {item.total} Tests · {item.tpWins} TP · {item.tgWins} TG · {item.losses} SL
                       </div>
 
                       <div className="mt-3 h-2 rounded-full bg-muted">
